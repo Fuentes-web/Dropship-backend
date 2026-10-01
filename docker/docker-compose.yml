@@ -71,6 +71,19 @@ services:
     depends_on:
       - prometheus
 
+  # Servicio 5: Frontend Web con Proxy Inverso Nginx
+  frontend:
+    container_name: dropship_frontend
+    build:
+      context: ../../dropship-site
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 # Volúmenes persistentes
 volumes:
   postgres_data:
