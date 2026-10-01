@@ -4,7 +4,8 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16--alpine-336791?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-Kind-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-K8s-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
+[![K3s](https://img.shields.io/badge/K3s-v1.35.5-FFC61C?style=flat&logo=k3s&logoColor=white)](https://k3s.io)
 [![Prometheus](https://img.shields.io/badge/Prometheus-v2.51.0-E6522C?style=flat&logo=prometheus&logoColor=white)](https://prometheus.io)
 [![Grafana](https://img.shields.io/badge/Grafana-v10.4.0-F46800?style=flat&logo=grafana&logoColor=white)](https://grafana.com)
 [![k6](https://img.shields.io/badge/k6-Load--Testing-7D64FF?style=flat&logo=k6&logoColor=white)](https://k6.io)
@@ -155,29 +156,37 @@ docker compose ps
 
 ---
 
-### Option 2: Deploy to Local Kubernetes (`kind`)
+### Option 2: Deploy to Local Kubernetes (K3s / Kind)
 
+The manifests in [`k8s/`](file:///C:/Users/luisa/Downloads/Dropshipping/dropship-backend/k8s) are 100% portable and validated on both **lightweight K3s (`k3d`)** and **standard Kubernetes (`kind`)**:
+
+#### 2A. Using Lightweight K3s (`k3d`) — Recommended (Uses ~60% less RAM)
 ```bash
-# 1. Create the Kind cluster with NodePort port mapping
-kind create cluster --name dropship-cluster --config k8s/kind-config.yaml
+# 1. Create the K3s cluster with NodePort port mapping (disabling Traefik to save memory)
+k3d cluster create dropship-k3s -p "30080:30080@server:0" --k3s-arg "--disable=traefik@server:0"
 
-# 2. Build and load the local API image into the Kind node
+# 2. Build and import the local API image into the K3s cluster
 docker build -t dropship-api:latest -f docker/Dockerfile .
-kind load docker-image dropship-api:latest --name dropship-cluster
+k3d image import dropship-api:latest -c dropship-k3s
 
 # 3. Apply Kubernetes manifests
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/postgres-pvc.yaml
-kubectl apply -f k8s/postgres-deployment.yaml
-kubectl apply -f k8s/api-deployment.yaml
+kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml -f k8s/postgres-pvc.yaml -f k8s/postgres-deployment.yaml -f k8s/api-deployment.yaml
 
-# 4. Check cluster status
+# 4. Check status
 kubectl get pods -o wide
-kubectl get svc
 ```
 
-Access the API running inside Kubernetes via NodePort at **`http://localhost:30080`**.
+#### 2B. Using Standard Kubernetes (`kind`)
+```bash
+# 1. Create Kind cluster with port mapping
+kind create cluster --name dropship-cluster --config k8s/kind-config.yaml
+
+# 2. Load image and apply manifests
+kind load docker-image dropship-api:latest --name dropship-cluster
+kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml -f k8s/postgres-pvc.yaml -f k8s/postgres-deployment.yaml -f k8s/api-deployment.yaml
+```
+
+Access the API running inside Kubernetes via NodePort at **`http://localhost:30080/health`**.
 
 ---
 
