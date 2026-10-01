@@ -1,159 +1,272 @@
-# Dropshipping Store — Backend API
+# 🛒 Dropshipping Store — Resilient Cloud-Native Backend API
 
-Backend profesional para la plataforma de dropshipping, desarrollado con **FastAPI**, persistencia en **PostgreSQL**, contenedorizado con **Docker & Docker Compose**, y preparado para orquestación en **Kubernetes (`k8s/`)**.
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16--alpine-336791?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-Kind-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
+[![Prometheus](https://img.shields.io/badge/Prometheus-v2.51.0-E6522C?style=flat&logo=prometheus&logoColor=white)](https://prometheus.io)
+[![Grafana](https://img.shields.io/badge/Grafana-v10.4.0-F46800?style=flat&logo=grafana&logoColor=white)](https://grafana.com)
+[![k6](https://img.shields.io/badge/k6-Load--Testing-7D64FF?style=flat&logo=k6&logoColor=white)](https://k6.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A production-grade, cloud-native backend built for an e-commerce dropshipping platform. Engineered with **FastAPI**, **PostgreSQL**, **Docker Compose**, and **Kubernetes**, featuring end-to-end observability (**Prometheus & Grafana**), automated **k6 load testing**, chaos engineering (**simulated payment failures**), and **self-healing** container orchestration.
 
 ---
 
-## 📁 Estructura del Proyecto
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients ["Clients & Traffic Generators"]
+        FE["Dropshipping Frontend / SPA"]
+        K6["k6 Load Generator (10-20 VUs)"]
+    end
+
+    subgraph Cluster ["Container & Cluster Runtime (Docker / Kind)"]
+        subgraph IngressLayer ["Traffic Ingestion"]
+            SVC["Service / Ingress (Port :8000 / NodePort :30080)"]
+        end
+
+        subgraph CoreBackend ["FastAPI Application (Replicas = 2)"]
+            API1["Pod / Container: api-1"]
+            API2["Pod / Container: api-2"]
+            PROBES["Liveness & Readiness Probes (/health)"]
+            CHAOS["Payment Simulator (10% Chaos Decline)"]
+            LATENCY["Latency Injection (/slow)"]
+            METRICS["Instrumentator (/metrics)"]
+        end
+
+        subgraph StorageLayer ["Data Persistence"]
+            DB[("PostgreSQL 16 Engine")]
+            PVC["PersistentVolumeClaim (1 GiB)"]
+        end
+
+        subgraph MonitoringStack ["Observability Stack"]
+            PROM["Prometheus Server (:9090)"]
+            GRAF["Grafana Dashboard (:3000)"]
+        end
+    end
+
+    FE -->|HTTP REST| SVC
+    K6 -->|Load Tests| SVC
+    SVC --> API1
+    SVC --> API2
+    API1 --> DB
+    API2 --> DB
+    DB --- PVC
+
+    PROM -->|Scrapes /metrics every 5s| API1
+    PROM -->|Scrapes /metrics every 5s| API2
+    GRAF -->|PromQL Queries| PROM
+```
+
+---
+
+## 🌟 Key Engineering Features
+
+- **⚡ High-Performance Asynchronous API:** Built with FastAPI, Pydantic v2 validation, and SQLAlchemy ORM on top of PostgreSQL 16.
+- **🎲 Chaos Engineering & Failure Injection:** Simulated payment processor with a controlled **10% random failure rate** (HTTP `402 Payment Required` with detailed reason codes) for testing system resiliency and client error-handling.
+- **⏱️ Artificial Latency Simulation (`/slow`):** Endpoint accepting customizable async delay query params (`?delay=0.5`) to benchmark p95/p99 latency thresholds under stress.
+- **📊 Production Observability (RED Method):**
+  - Native Prometheus instrumentation exposing Rate, Errors, and Duration metrics.
+  - Zero-touch **Grafana auto-provisioning** with pre-configured datasources and dashboards.
+- **☸️ Kubernetes Cloud-Native Deployment (`k8s/`):**
+  - Declarative manifests: `ConfigMap`, `Secret`, `PersistentVolumeClaim`, `Deployment`, and `Service`.
+  - Configured **Liveness** and **Readiness** health probes pointing to `/health`.
+  - **Self-Healing validation:** Verified automatic pod recreation by ReplicaSet with zero downtime.
+- **🚀 Automated Stress & Load Testing (`k6/`):** k6 scenarios simulating real e-commerce traffic (browsing catalog, placing orders, and injecting latency) scaled across 10 to 20 concurrent Virtual Users (VUs).
+
+---
+
+## 📈 Live Observability Showcase (Grafana)
+
+The stack automatically monitors backend vitals using the **RED method** (Rate, Errors, Duration):
+
+![Grafana Dashboard](docs/assets/grafana-dashboard.png)
+
+### Dashboard Panels Explained:
+1. **📈 Requests Per Second (Throughput / RPS):** Real-time request volume categorized by HTTP status code and endpoint path (`/products`, `/orders`, `/slow`, `/health`). Captured peaking at **~32 req/s** during k6 load testing.
+2. **⏱️ P95 Latency (Seconds / Milliseconds):** Tracks response time for the 95th percentile of incoming traffic, revealing latency distribution and artificial spikes triggered by `/slow`.
+3. **🚨 Error Rate (%):** Visualizes the percentage of client (4xx) and server (5xx) errors. Accurately flags simulated payment declines (HTTP 402) during load spikes.
+
+---
+
+## 📁 Project Structure
 
 ```text
 dropship-backend/
-├── app/                      # Código fuente de la API
-│   ├── __init__.py
-│   ├── database.py           # Conexión SQLAlchemy y get_db
-│   ├── models.py             # Modelo ORM de Producto
-│   ├── schemas.py            # Esquemas Pydantic v2
-│   ├── seed.py               # Productos de prueba del catálogo
-│   └── main.py               # Aplicación FastAPI, CORS y endpoints
-├── docker/                   # Contenedores e infraestructura local
-│   ├── Dockerfile            # Imagen ligera con Python 3.11-slim
-│   ├── docker-compose.yml    # Orquestación de API + PostgreSQL 16
-│   └── .env.example          # Plantilla de variables de entorno
-├── k8s/                      # Manifiestos de Kubernetes para producción
-│   ├── configmap.yaml        # Configuración no confidencial
-│   ├── secret.yaml           # Credenciales seguras
-│   ├── postgres-pvc.yaml     # Volumen persistente de almacenamiento
-│   ├── postgres-deployment.yaml # Despliegue y servicio de PostgreSQL
-│   └── api-deployment.yaml   # Despliegue y servicio NodePort de la API
-├── .gitignore                # Reglas de exclusión para Git
-├── requirements.txt          # Dependencias de Python
-└── README.md                 # Documentación del proyecto
+├── app/                              # Core Application Code
+│   ├── database.py                   # SQLAlchemy connection & session pooling
+│   ├── models.py                     # Database models (Product, Order, OrderItem)
+│   ├── schemas.py                    # Pydantic v2 request/response schemas
+│   ├── seed.py                       # Initial sample catalog data
+│   ├── payment.py                    # Payment gateway simulator (10% chaos failure)
+│   └── main.py                       # FastAPI routes, CORS, and Prometheus exporter
+├── docker/                           # Container Infrastructure
+│   ├── Dockerfile                    # Optimized Python 3.11-slim container image
+│   ├── docker-compose.yml            # Multi-service stack (API, DB, Prometheus, Grafana)
+│   ├── .env.example                  # Environment configuration template
+│   ├── prometheus/
+│   │   └── prometheus.yml            # Scrape jobs and targets configuration
+│   └── grafana/
+│       ├── dashboards/               # Pre-built dashboard JSON definitions
+│       └── provisioning/             # Automated datasource & dashboard configs
+├── k8s/                              # Kubernetes Manifests
+│   ├── kind-config.yaml              # Local Kind cluster configuration with NodePort mapping
+│   ├── configmap.yaml                # Non-sensitive environment configuration
+│   ├── secret.yaml                   # Secure database credentials
+│   ├── postgres-pvc.yaml             # 1 GiB PersistentVolumeClaim
+│   ├── postgres-deployment.yaml      # PostgreSQL Deployment & ClusterIP Service
+│   └── api-deployment.yaml           # FastAPI Deployment (2 replicas), Probes & NodePort Service
+├── k6/                               # Performance & Load Testing
+│   ├── load_test.js                  # k6 scenario (10-20 VUs: catalog, orders, latency)
+│   └── run-load-test.ps1             # PowerShell runner script using Docker
+├── docs/assets/                      # Documentation assets & screenshots
+│   └── grafana-dashboard.png         # Screenshot of the live Grafana dashboard
+├── requirements.txt                  # Python dependencies
+└── README.md                         # Documentation
 ```
 
 ---
 
-## 🚀 Inicio Rápido con Docker Compose (Recomendado)
+## 🚀 Quick Start Guide
 
-La forma más rápida de levantar tanto la base de datos PostgreSQL como la API de FastAPI es usando Docker Compose.
+### Option 1: Run with Docker Compose (Recommended)
 
-### 1. Requisitos
-- **Docker Desktop** instalado y en ejecución en tu equipo.
-
-### 2. Levantar los servicios
-Desde la carpeta raíz del backend, ejecuta:
+Spins up the entire microservices stack (API, Database, Prometheus, and Grafana) with one command:
 
 ```bash
+# 1. Navigate to the docker directory
 cd docker
+
+# 2. Launch the services in detached mode
 docker compose up -d
-```
 
-*(El parámetro `-d` levanta los contenedores en segundo plano y deja tu terminal libre).*
-
-### 3. Verificar el estado
-```bash
+# 3. Verify service health
 docker compose ps
 ```
 
-### 4. Ver los logs en tiempo real
-```bash
-docker compose logs -f
-```
-*(Presiona `Ctrl + C` para salir de los logs sin apagar los contenedores).*
-
-### 5. Apagar los servicios
-```bash
-docker compose down
-```
+#### Service URLs:
+- **API Root & Health:** [http://localhost:8000/health](http://localhost:8000/health)
+- **Interactive OpenAPI Documentation (Swagger UI):** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Prometheus UI:** [http://localhost:9090](http://localhost:9090)
+- **Grafana Dashboard:** [http://localhost:3000](http://localhost:3000) *(User: `admin` | Pass: `admin`)*
 
 ---
 
-## 🌐 Endpoints de la API
+### Option 2: Deploy to Local Kubernetes (`kind`)
 
-Con los contenedores arriba, abre en tu navegador:
+```bash
+# 1. Create the Kind cluster with NodePort port mapping
+kind create cluster --name dropship-cluster --config k8s/kind-config.yaml
 
-| Método | Endpoint | Descripción |
-|---|---|---|
-| `GET` | [`/`](http://localhost:8000/) | Mensaje de bienvenida y enlaces principales |
-| `GET` | [`/health`](http://localhost:8000/health) | Estado del servicio y conectividad con PostgreSQL |
-| `GET` | [`/products`](http://localhost:8000/products) | Lista de productos (con filtro opcional `?category=audio`) |
-| `GET` | [`/products/{id}`](http://localhost:8000/products/1) | Detalle de un producto individual |
-| `POST` | [`/products`](http://localhost:8000/products) | Crear un nuevo producto en catálogo |
-| `GET` | [`/docs`](http://localhost:8000/docs) | **Swagger UI:** Documentación interactiva para probar peticiones |
-| `GET` | [`/redoc`](http://localhost:8000/redoc) | Documentación técnica alternativa ReDoc |
+# 2. Build and load the local API image into the Kind node
+docker build -t dropship-api:latest -f docker/Dockerfile .
+kind load docker-image dropship-api:latest --name dropship-cluster
+
+# 3. Apply Kubernetes manifests
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/postgres-pvc.yaml
+kubectl apply -f k8s/postgres-deployment.yaml
+kubectl apply -f k8s/api-deployment.yaml
+
+# 4. Check cluster status
+kubectl get pods -o wide
+kubectl get svc
+```
+
+Access the API running inside Kubernetes via NodePort at **`http://localhost:30080`**.
 
 ---
 
-## 💻 Ejecución Local con Python (Sin Docker)
+### Option 3: Local Python Virtual Environment
 
-Si prefieres correr la API directamente en tu máquina:
-
-### 1. Crear y activar entorno virtual
 ```bash
-# Crear entorno virtual
+# 1. Create and activate a virtual environment
 python -m venv .venv
+source .venv/Scripts/activate     # On Windows (PowerShell: .\.venv\Scripts\Activate.ps1)
 
-# Activar en Git Bash:
-source .venv/Scripts/activate
-
-# O activar en PowerShell:
-# .\.venv\Scripts\Activate.ps1
-```
-
-### 2. Instalar dependencias
-```bash
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Iniciar el servidor
-```bash
+# 3. Start development server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ---
 
-## ☸️ Despliegue en Kubernetes (`k8s/`)
+## ⚡ Running the Load Test with k6
 
-Para desplegar en Minikube, Kind o cualquier clúster de Kubernetes:
+Simulate real-world traffic with 10 to 20 concurrent Virtual Users over a 40-second benchmark:
 
+### Using Docker (Zero local installations needed):
 ```bash
-# 1. Aplicar secretos y configuraciones
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
+# Run the automated PowerShell script:
+.\k6\run-load-test.ps1
 
-# 2. Desplegar almacenamiento y PostgreSQL
-kubectl apply -f k8s/postgres-pvc.yaml
-kubectl apply -f k8s/postgres-deployment.yaml
-
-# 3. Desplegar la API FastAPI
-kubectl apply -f k8s/api-deployment.yaml
-
-# 4. Verificar pods y servicios
-kubectl get pods
-kubectl get svc
+# Or run directly via Docker CLI:
+docker run --rm -i \
+  --network docker_default \
+  -e TARGET_URL="http://api:8000" \
+  -v "${PWD}/k6:/k6" \
+  grafana/k6 run /k6/load_test.js
 ```
 
-La API quedará expuesta en el puerto **30080** del clúster.
+### Benchmark Summary Results:
+```text
+✓ products status 200
+✓ order handled (201 or 402)
+✓ health status 200
+✓ slow status 200
+
+http_req_duration..............: avg=44.25ms  min=1.72ms  med=4.28ms  max=1.14s  p(95)=301.73ms
+http_req_failed................: 1.53% (20 out of 1299 failed due to chaos payment declines)
+http_reqs......................: 1299 requests (32.31 req/s)
+vus............................: 20 concurrent Virtual Users
+```
 
 ---
 
-## 📤 Conectar y Subir a GitHub
+## 🛡️ Kubernetes Self-Healing Verification
 
-Si ya creaste el repositorio en GitHub, sigue estos pasos para subir todo tu código:
+To observe Kubernetes automatically restoring desired state when a pod crashes:
 
-```bash
-# 1. Asegúrate de estar en la carpeta dropship-backend
-cd /c/Users/luisa/Downloads/Dropshipping/dropship-backend
+1. **List the active API pods:**
+   ```bash
+   kubectl get pods -l app=dropship-api
+   ```
+2. **Delete one pod to simulate a node crash or fatal error:**
+   ```bash
+   kubectl delete pod <pod-name>
+   ```
+3. **Inspect the immediate recovery:**
+   ```bash
+   kubectl get pods -l app=dropship-api
+   ```
+   *Within 2 seconds, the ReplicaSet identifies the discrepancy (1 running vs 2 desired) and provisions a new replacement pod. HTTP traffic on `http://localhost:30080/health` continues uninterrupted.*
 
-# 2. Agregar todos los archivos
-git add .
+---
 
-# 3. Crear el commit
-git commit -m "feat: complete dropshipping backend with FastAPI, Docker and K8s"
+## 📑 API Reference
 
-# 4. Enlazar con tu repositorio remoto de GitHub (reemplaza con tu URL real)
-git remote add origin https://github.com/Fuentes-web/<TU-REPOSITORIO>.git
+| Method | Endpoint | Description | Response Status |
+|:---|:---|:---|:---:|
+| `GET` | `/` | Welcome message & links | `200 OK` |
+| `GET` | `/health` | Service health & PostgreSQL connectivity | `200 OK` |
+| `GET` | `/products` | Catalog listing (supports `?category=` filter) | `200 OK` |
+| `GET` | `/products/{id}` | Detailed product information | `200 OK` / `404 Not Found` |
+| `POST` | `/products` | Create a new catalog item | `201 Created` |
+| `POST` | `/orders` | Submit order with simulated payment gateway (10% chaos rate) | `201 Created` / `402 Payment Required` |
+| `GET` | `/orders` | Audit log of all completed & failed orders | `200 OK` |
+| `GET` | `/orders/track/{number}` | Track specific order by code (`MSC-...`) | `200 OK` / `404 Not Found` |
+| `GET` | `/slow` | Artificial async delay injection (`?delay=X` seconds) | `200 OK` |
+| `GET` | `/metrics` | Prometheus RED metrics exposition format | `200 OK` |
+| `GET` | `/docs` | Interactive Swagger UI API playground | `200 OK` |
 
-# 5. Asegurar rama main y subir cambios
-git branch -M main
-git push -u origin main
-```
+---
+
+## 📄 License
+
+This project is open-source and licensed under the [MIT License](LICENSE).

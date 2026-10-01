@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "Dropship Dashboards"
+    orgId: 1
+    folder: "Dropshipping"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

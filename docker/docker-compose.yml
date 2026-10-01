@@ -5,20 +5,20 @@ services:
     container_name: dropship_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: dropship_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_DB: ${POSTGRES_DB:-dropship_db}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dropship_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-dropship_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Servicio 2: API FastAPI
+  # Servicio 2: API FastAPI con métricas Prometheus
   api:
     container_name: dropship_api
     build:
@@ -26,15 +26,51 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgrespassword@db:5432/dropship_db
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@db:5432/${POSTGRES_DB:-dropship_db}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ../app:/app/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-# Volumen persistente para la base de datos
+  # Servicio 3: Servidor de Métricas Prometheus
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: dropship_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
+  # Servicio 4: Visualización y Dashboard Grafana
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: dropship_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+# Volúmenes persistentes
 volumes:
   postgres_data:

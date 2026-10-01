@@ -8,15 +8,18 @@ ENV PYTHONUNBUFFERED=1
 # 3. Carpeta de trabajo dentro del contenedor
 WORKDIR /app
 
-# 4. Copiamos requirements.txt e instalamos dependencias
+# 4. Instalamos curl para healthchecks del contenedor y herramientas de red
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+# 5. Copiamos requirements.txt e instalamos dependencias
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copiamos el código fuente de la aplicación
+# 6. Copiamos el código fuente de la aplicación
 COPY app/ ./app/
 
-# 6. Exponemos el puerto estándar de FastAPI
+# 7. Exponemos el puerto estándar de FastAPI
 EXPOSE 8000
 
-# 7. Arrancamos el servidor Uvicorn con recarga en caliente para desarrollo
+# 8. Arrancamos el servidor Uvicorn con recarga en caliente para desarrollo
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
