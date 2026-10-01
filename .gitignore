@@ -1,0 +1,28 @@
+# 1. Entornos virtuales de Python (evita subir gigabytes de librerías instaladas)
+.venv/
+venv/
+env/
+ENV/
+
+# 2. Archivos temporales y caché compilada de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 3. Variables de entorno locales y secretos (NUNCA subas credenciales reales a GitHub)
+.env
+.env.local
+
+# 4. Datos locales de base de datos o Docker
+postgres_data/
+*.sqlite3
+
+# 5. Carpetas de editores e IDEs
+.vscode/
+.idea/
+
+# 6. Archivos del sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store

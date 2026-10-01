@@ -1,0 +1,40 @@
+services:
+  # Servicio 1: Base de datos relacional PostgreSQL
+  db:
+    image: postgres:16-alpine
+    container_name: dropship_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: dropship_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dropship_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Servicio 2: API FastAPI
+  api:
+    container_name: dropship_api
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgrespassword@db:5432/dropship_db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../app:/app/app
+
+# Volumen persistente para la base de datos
+volumes:
+  postgres_data:
